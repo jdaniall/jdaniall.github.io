@@ -1,44 +1,55 @@
-# Your GitHub workflow file under .github/workflows/
-# Trigger the action on push to main
+name: Deploy DocFX to GitHub Pages
+
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
+  workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
-  actions: read
+  contents: read
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
-  group: "pages"
+  group: pages
   cancel-in-progress: false
-  
+
 jobs:
-  publish-docs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install DocFX
+        run: dotnet tool update -g docfx
+
+      # 👇 Set this to where your docfx.json lives, relative to repo root
+      - name: Build site
+        env:
+          DOCFX_PROJECT: docs/docfx.json
+        run: |
+          docfx "$DOCFX_PROJECT"
+          # safety: ensure Pages doesn't run Jekyll (usually already present)
+          test -f docs/_site/.nojekyll || touch docs/_site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-    - name: Dotnet Setup
-      uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: 8.x
-
-    - run: dotnet tool update -g docfx
-    - run: docfx docs/docfx.json
-
-    - name: Upload artifact
-      uses: actions/upload-pages-artifact@v3
-      with:
-        # Upload entire repository
-        path: 'docs/_site'
-    - name: Deploy to GitHub Pages
-      id: deployment
-      uses: actions/deploy-pages@v4
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
